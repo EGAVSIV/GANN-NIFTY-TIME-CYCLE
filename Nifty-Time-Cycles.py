@@ -8,6 +8,7 @@ import plotly.graph_objects as go
 # -------------------------------------------------------------
 #                TIME CYCLE FUNCTIONS
 # -------------------------------------------------------------
+
 def get_nifty_daily(start="2010-01-01", end=None):
     if end is None:
         end = dt.date.today().strftime("%Y-%m-%d")
@@ -75,7 +76,7 @@ def project_time_cycles(df, pivot_idx, cycles):
         close = row["close"]
 
         abs_change = close - pivot_price
-        pct_change = (abs_change / pivot_price) * 100
+        pct_change = (abs_change / pivot_price) * 100 if pivot_price != 0 else 0
         body = close - row["open"]
         candle = "Bullish" if body > 0 else "Bearish" if body < 0 else "Doji"
 
@@ -83,16 +84,15 @@ def project_time_cycles(df, pivot_idx, cycles):
             {
                 "Cycle Bars": c,
                 "Cycle Date": df.index[idx].date(),
-                "Pivot Price": round(pivot_price, 2),
-                "Price @ Cycle": round(close, 2),
-                "Abs Change": round(abs_change, 2),
-                "% Change": round(pct_change, 2),
+                "Pivot Price": round(float(pivot_price), 2),
+                "Price @ Cycle": round(float(close), 2),
+                "Abs Change": round(float(abs_change), 2),
+                "% Change": round(float(pct_change), 2),
                 "Candle": candle,
             }
         )
 
     return pd.DataFrame(rows)
-
 
 # -------------------------------------------------------------
 #                  STREAMLIT UI
@@ -103,6 +103,9 @@ st.markdown("### 3-6-9, 30-60-90, 300-600-900 Cycle Reversal Zones")
 
 st.info("This tool automatically detects the latest pivot and projects reversal time cycles.")
 
+# -------------------------------
+# FETCH DATA
+# -------------------------------
 with st.spinner("Fetching NIFTY data..."):
     df = get_nifty_daily(start="2015-01-01")
 
@@ -112,6 +115,9 @@ if df.empty:
 with st.spinner("Detecting pivots..."):
     df = find_pivots(df)
 
+# -------------------------------
+# SELECT PIVOT TYPE
+# -------------------------------
 pivot_type = st.radio(
     "Select Pivot Type:",
     ["low", "high"],
@@ -121,21 +127,33 @@ pivot_type = st.radio(
 pivot_idx = get_last_pivot_index(df, pivot_type)
 
 if pivot_idx is None:
-    st.error("No pivot found.")
+    st.error(f"No {pivot_type} pivot found.")
     st.stop()
 
 pivot_date = df.index[pivot_idx]
 pivot_price = df.iloc[pivot_idx]["close"]
 
-st.success(f"Last pivot **{pivot_type.upper()}** at **{pivot_date.date()}** | Price: **{pivot_price:.2f}**")
+# SAFE FLOAT CONVERSION
+try:
+    pivot_price = float(pivot_price)
+except:
+    st.error("Pivot price is invalid.")
+    st.stop()
 
+st.success(
+    f"Last pivot **{pivot_type.upper()}** at **{pivot_date.date()}** | "
+    f"Price: **{pivot_price:.2f}**"
+)
+
+# -------------------------------
+# CYCLE PROJECTION
+# -------------------------------
 cycles = [3, 6, 9, 30, 60, 90, 300, 600, 900]
-
 cycle_df = project_time_cycles(df, pivot_idx, cycles)
 
-# -------------------------------------------------------------
-#               PLOT NIFTY WITH CYCLE MARKERS
-# -------------------------------------------------------------
+# -------------------------------
+# PLOT CHART
+# -------------------------------
 fig = go.Figure()
 
 fig.add_trace(go.Candlestick(
@@ -147,10 +165,15 @@ fig.add_trace(go.Candlestick(
     name="NIFTY"
 ))
 
-# Pivot marker
-fig.add_vline(x=pivot_date, line_width=2, line_dash="dash", line_color="blue")
+# Pivot line
+fig.add_vline(
+    x=pivot_date,
+    line_width=2,
+    line_dash="dash",
+    line_color="blue"
+)
 
-# Cycle markers
+# Cycle lines
 for _, row in cycle_df.iterrows():
     fig.add_vline(
         x=row["Cycle Date"],
@@ -167,9 +190,9 @@ fig.update_layout(
 
 st.plotly_chart(fig, use_container_width=True)
 
-# -------------------------------------------------------------
-#                  SHOW DATA TABLE
-# -------------------------------------------------------------
+# -------------------------------
+# TABLE OUTPUT
+# -------------------------------
 st.subheader("📊 Cycle Projection Table")
 st.dataframe(cycle_df, use_container_width=True)
 
