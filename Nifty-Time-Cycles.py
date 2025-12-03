@@ -64,7 +64,12 @@ def get_last_pivot_index(df, pivot_type="low"):
 def project_time_cycles(df, pivot_idx, cycles):
     pivot_row = df.iloc[pivot_idx]
     pivot_date = df.index[pivot_idx]
-    pivot_price = pivot_row["close"]
+
+    # SAFELY convert pivot_price to float
+    try:
+        pivot_price = float(pivot_row["close"])
+    except:
+        pivot_price = np.nan
 
     rows = []
     for c in cycles:
@@ -73,12 +78,31 @@ def project_time_cycles(df, pivot_idx, cycles):
             continue
 
         row = df.iloc[idx]
-        close = row["close"]
+
+        try:
+            close = float(row["close"])
+        except:
+            close = np.nan
 
         abs_change = close - pivot_price
-        pct_change = (abs_change / pivot_price) * 100 if pivot_price != 0 else 0
-        body = close - row["open"]
-        candle = "Bullish" if body > 0 else "Bearish" if body < 0 else "Doji"
+
+        # Safe % calculation
+        if pivot_price == 0 or np.isnan(pivot_price):
+            pct_change = 0.0
+        else:
+            pct_change = (abs_change / pivot_price) * 100
+
+        # Candle body logic
+        try:
+            body = close - float(row["open"])
+        except:
+            body = 0
+
+        candle = (
+            "Bullish" if body > 0 else
+            "Bearish" if body < 0 else
+            "Doji"
+        )
 
         rows.append(
             {
@@ -93,6 +117,7 @@ def project_time_cycles(df, pivot_idx, cycles):
         )
 
     return pd.DataFrame(rows)
+
 
 # -------------------------------------------------------------
 #                  STREAMLIT UI
